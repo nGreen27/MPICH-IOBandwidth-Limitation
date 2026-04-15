@@ -75,10 +75,10 @@ static void WriteContig (ADIO_File fd, const void *buf, int count, MPI_Datatype 
     double ltime_middle;
     double ltime_end;
     int time_wait;
-
-    ROMIO_THREAD_CS_EXIT();
     ltime_ini = MPI_Wtime ();
+    ROMIO_THREAD_CS_ENTER();
     ADIO_WriteContig(fd, buf, count, datatype, file_ptr_type, offset, status, error_code);
+    ROMIO_THREAD_CS_EXIT();
     ltime_middle = MPI_Wtime ();
     if (exec_time != 0) {
         int run_time = (int)((ltime_middle - ltime_ini)*1000000.0);
@@ -101,7 +101,6 @@ static void WriteContig (ADIO_File fd, const void *buf, int count, MPI_Datatype 
     ltime_end = MPI_Wtime ();
     int real_wait_time = (int)((ltime_end - ltime_middle)*1000000.0);
     (*time_excess) = (*time_excess) + (real_wait_time - time_wait);
-    ROMIO_THREAD_CS_ENTER();
 }
 
 /*@
@@ -115,9 +114,10 @@ static void ReadContig (ADIO_File fd, void *buf, int count, MPI_Datatype datatyp
     double ltime_end;
     int time_wait;
 
-    ROMIO_THREAD_CS_EXIT();
+    ROMIO_THREAD_CS_ENTER();
     ltime_ini = MPI_Wtime ();
     ADIO_ReadContig(fd, buf, count, datatype, file_ptr_type, offset, status, error_code);
+    ROMIO_THREAD_CS_EXIT();
     ltime_middle = MPI_Wtime ();
     if (exec_time != 0) {
         int run_time = (int)((ltime_middle - ltime_ini)*1000000.0);
@@ -140,7 +140,6 @@ static void ReadContig (ADIO_File fd, void *buf, int count, MPI_Datatype datatyp
     ltime_end = MPI_Wtime ();
     int real_wait_time = (int)((ltime_end - ltime_middle)*1000000.0);
     (*time_excess) = (*time_excess) + (real_wait_time - time_wait);
-    ROMIO_THREAD_CS_ENTER();
 }
 
 /*@
@@ -208,8 +207,8 @@ static void control_bw_operation (void *buf, int count, MPI_Datatype datatype, A
     double time_ini=0;
     double time_end=0;
     long int aggr_data=0;
-    double EMPI_SCALE_BW = 0;
-    double EMPI_DESIRED_BW=0;
+    long double* EMPI_SCALE_BW = NULL;
+    long double* EMPI_DESIRED_BW = NULL;
     int datatype_size;
 
     PRINTF("control_bw_operation: begin\n");
@@ -221,22 +220,22 @@ static void control_bw_operation (void *buf, int count, MPI_Datatype datatype, A
     MPI_Type_size(datatype,&datatype_size);
 
     if (oper == ASYNC_OP_ReadContig) {
-        EMPI_SCALE_BW = (double)EMPI_SCALE_BW_READ;
-        EMPI_DESIRED_BW = (double)EMPI_DESIRED_BW_READ;
+        EMPI_SCALE_BW = &EMPI_SCALE_BW_READ;
+        EMPI_DESIRED_BW = &EMPI_DESIRED_BW_READ;
     } else if (oper == ASYNC_OP_IReadContig) {
-        EMPI_SCALE_BW = (double)EMPI_SCALE_BW_IREAD;
-        EMPI_DESIRED_BW = (double)EMPI_DESIRED_BW_IREAD;
+        EMPI_SCALE_BW = &EMPI_SCALE_BW_IREAD;
+        EMPI_DESIRED_BW = &EMPI_DESIRED_BW_IREAD;
     } else if (oper == ASYNC_OP_WriteContig) {
-        EMPI_SCALE_BW = (double)EMPI_SCALE_BW_WRITE;
-        EMPI_DESIRED_BW = (double)EMPI_DESIRED_BW_WRITE;
+        EMPI_SCALE_BW = &EMPI_SCALE_BW_WRITE;
+        EMPI_DESIRED_BW = &EMPI_DESIRED_BW_WRITE;
     } else if (oper == ASYNC_OP_IWriteContig) {
-        EMPI_SCALE_BW = (double)EMPI_SCALE_BW_IWRITE;
-        EMPI_DESIRED_BW = (double)EMPI_DESIRED_BW_IWRITE;
+        EMPI_SCALE_BW = &EMPI_SCALE_BW_IWRITE;
+        EMPI_DESIRED_BW = &EMPI_DESIRED_BW_IWRITE;
     }
     
     PRINTF("control_bw_operation: --> EMPI_WORLD_RANK: %d, EMPI_WORLD_SIZE: %d, EMPI_IOBLOCK: %ld, EMPI_DATA_READ: %ld, EMPI_UTIME_READ: %ld, EMPI_DATA_IREAD: %ld, EMPI_UTIME_IREAD: %ld, EMPI_DATA_WRITE: %ld, EMPI_UTIME_WRITE: %ld, EMPI_DATA_IWRITE: %ld, EMPI_UTIME_IWRITE: %ld, EMPI_DESIRED_BW: %f, EMPI_SCALE_BW: %f\n",EMPI_WORLD_RANK, EMPI_WORLD_SIZE, EMPI_IOBLOCK, EMPI_DATA_READ, EMPI_UTIME_READ, EMPI_DATA_IREAD, EMPI_UTIME_IREAD, EMPI_DATA_WRITE,  EMPI_UTIME_WRITE, EMPI_DATA_IWRITE,  EMPI_UTIME_IWRITE, EMPI_DESIRED_BW, EMPI_SCALE_BW);
     
-    if(EMPI_DESIRED_BW!=0.0){
+    if(*EMPI_DESIRED_BW!=0.0){
         // IO Scheduling variables
         double adjusted_desired_bw=0;
         
@@ -251,16 +250,20 @@ static void control_bw_operation (void *buf, int count, MPI_Datatype datatype, A
         num_phases=(int)ceil((double)count/(double)EMPI_IOBLOCK);
         
         // Get adjusted_desired_bw
-        adjusted_desired_bw = EMPI_DESIRED_BW * EMPI_SCALE_BW;
+        
 
         // Get exec time for a standard block
         //exec_time_block = (int)((((double)(EMPI_WORLD_SIZE*EMPI_IOBLOCK*datatype_size)) / ((adjusted_desired_bw)*1024.0*1024.0))*1000000.0);
         //exec_time_block = (int)((((double)(EMPI_IOBLOCK*datatype_size)) / ((adjusted_desired_bw)*1024.0*1024.0))*1000000.0);
-        exec_time_block = (int)((((double)(EMPI_IOBLOCK*datatype_size)) / (adjusted_desired_bw))*1000000.0);
-
+        
         PRINTF("control_bw_operation: exec_time_block: %d, EMPI_DESIRED_BW: %lf, adjusted_desired_bw: %lf, EMPI_WORLD_SIZE: %d, EMPI_IOBLOCK: %ld, datatype_size:%d\n",exec_time_block,EMPI_DESIRED_BW, adjusted_desired_bw, EMPI_WORLD_SIZE, EMPI_IOBLOCK, datatype_size);
 
         for (i=0;i<num_phases;i++){
+
+            adjusted_desired_bw = (double)(*EMPI_DESIRED_BW) * (double)(*EMPI_SCALE_BW);
+            exec_time_block = (int)((((double)(EMPI_IOBLOCK*datatype_size)) / (adjusted_desired_bw))*1000000.0);
+
+
             local_off=offset+(MPI_Offset)(i*((MPI_Offset)(EMPI_IOBLOCK*(long int)datatype_size)));
             array_offset=((long int)i)*EMPI_IOBLOCK;
             if(i<num_phases-1){
@@ -295,19 +298,19 @@ static void control_bw_operation (void *buf, int count, MPI_Datatype datatype, A
     time_end = MPI_Wtime ();
     
     if (oper == ASYNC_OP_ReadContig) {
-        EMPI_SCALE_BW_READ = (long double)EMPI_SCALE_BW;
+        EMPI_SCALE_BW_READ = (long double)*EMPI_SCALE_BW;
         EMPI_DATA_READ = EMPI_DATA_READ + aggr_data;
         EMPI_UTIME_READ = EMPI_UTIME_READ + (long int)((time_end - time_ini) * 1000000.0) ;
     } else if  (oper == ASYNC_OP_IReadContig) {
-        EMPI_SCALE_BW_IREAD = (long double)EMPI_SCALE_BW;
+        EMPI_SCALE_BW_IREAD = (long double)*EMPI_SCALE_BW;
         EMPI_DATA_IREAD = EMPI_DATA_IREAD + aggr_data;
         EMPI_UTIME_IREAD = EMPI_UTIME_IREAD + (long int)((time_end - time_ini) * 1000000.0) ;
     } else if (oper == ASYNC_OP_WriteContig) {
-        EMPI_SCALE_BW_WRITE = (long double)EMPI_SCALE_BW;
+        EMPI_SCALE_BW_WRITE = (long double)*EMPI_SCALE_BW;
         EMPI_DATA_WRITE = EMPI_DATA_WRITE + aggr_data;
         EMPI_UTIME_WRITE = EMPI_UTIME_WRITE + (long int)((time_end - time_ini) * 1000000.0) ;
     } else if (oper == ASYNC_OP_IWriteContig) {
-        EMPI_SCALE_BW_IWRITE = (long double)EMPI_SCALE_BW;
+        EMPI_SCALE_BW_IWRITE = (long double)*EMPI_SCALE_BW;
         EMPI_DATA_IWRITE = EMPI_DATA_IWRITE + aggr_data;
         EMPI_UTIME_IWRITE = EMPI_UTIME_IWRITE + (long int)((time_end - time_ini) * 1000000.0) ;
     }
@@ -381,12 +384,13 @@ int Async_exec_op(int oper, void *data, int size)
 void Async_WriteContig(ADIO_File fd, const void *buf, int count, MPI_Datatype datatype, int file_ptr_type, ADIO_Offset offset, MPI_Status *status, int *error_code)
 {
     PRINTF ("Async_WriteContig: begin\n");
+    ROMIO_THREAD_CS_EXIT();
     Async_WriteContig_data_t iwritecontig_data = {fd,buf,count,datatype,file_ptr_type,offset,status,error_code};
     MPIIO_Enqueue_async_io_queue(&MPIIO_Async_io_queue, ASYNC_OP_WriteContig, (char *)&iwritecontig_data, sizeof(Async_WriteContig_data_t));
     Async_dummy_data_t wait_data = {0};
     MPIIO_Enqueue_async_io_queue(&MPIIO_Async_io_queue, ASYNC_OP_WAIT, (char *)&wait_data, sizeof(Async_dummy_data_t));
     MPIIO_WaitEmpty_async_io_queue(&MPIIO_Async_io_queue);
-    
+    ROMIO_THREAD_CS_ENTER();
     PRINTF ("Async_WriteContig: end\n");
 }
  
@@ -397,12 +401,13 @@ void Async_WriteContig(ADIO_File fd, const void *buf, int count, MPI_Datatype da
 void Async_ReadContig(ADIO_File fd, void *buf, int count, MPI_Datatype datatype, int file_ptr_type, ADIO_Offset offset, MPI_Status *status, int *error_code)
 {
     PRINTF ("Async_ReadContig: begin\n");
+    ROMIO_THREAD_CS_EXIT();
     Async_ReadContig_data_t ireadcontig_data = {fd,buf,count,datatype,file_ptr_type,offset,status,error_code};
     MPIIO_Enqueue_async_io_queue(&MPIIO_Async_io_queue, ASYNC_OP_ReadContig, (char *)&ireadcontig_data, sizeof(Async_ReadContig_data_t));
     Async_dummy_data_t wait_data = {0};
     MPIIO_Enqueue_async_io_queue(&MPIIO_Async_io_queue, ASYNC_OP_WAIT, (char *)&wait_data, sizeof(Async_dummy_data_t));
     MPIIO_WaitEmpty_async_io_queue(&MPIIO_Async_io_queue);
-    
+    ROMIO_THREAD_CS_ENTER();
     PRINTF ("Async_ReadContig: end\n");
 }
 
@@ -420,7 +425,9 @@ void Async_IwriteContig(ADIO_File fd, const void *buf, int count, MPI_Datatype d
     (*error_code) = MPI_SUCCESS;
     generic_request_create_start(&fd, nbytes, error_code, request);
     Async_IWriteContig_data_t elem = {fd,buf,count,datatype,file_ptr_type,offset,request};
+    ROMIO_THREAD_CS_EXIT();
     MPIIO_Enqueue_async_io_queue(&MPIIO_Async_io_queue, ASYNC_OP_IWriteContig, (char *)&elem, sizeof(Async_IWriteContig_data_t));
+    ROMIO_THREAD_CS_ENTER();
     //MPIIO_WaitEmpty_async_io_queue(&MPIIO_Async_io_queue);
 
     PRINTF ("Async_IwriteContig: end\n");
