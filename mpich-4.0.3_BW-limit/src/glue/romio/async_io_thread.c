@@ -117,7 +117,7 @@ int MPIIO_Enqueue_async_io_queue(MPIIO_Async_io_queue_t *queue, int oper, char *
 #if MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE
 
     /* XXX DJG why is this unlock/lock necessary?  Should we just YIELD here or later?  */
-    MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
+    //MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 
     MPID_Thread_mutex_lock(&async_io_mutex, &mpi_errno);
     MPIR_Assert(!mpi_errno);
@@ -140,7 +140,7 @@ int MPIIO_Enqueue_async_io_queue(MPIIO_Async_io_queue_t *queue, int oper, char *
     MPID_Thread_cond_signal(&async_io_cond_enqueue, &mpi_errno);
     MPIR_Assert(!mpi_errno);
 
-    MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
+    //MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 
 #endif /* MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE */
     return mpi_errno;
@@ -161,7 +161,7 @@ int MPIIO_Dequeue_async_io_queue(MPIIO_Async_io_queue_t *queue, int *oper, char 
 #if MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE
 
     /* XXX DJG why is this unlock/lock necessary?  Should we just YIELD here or later?  */
-    MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
+    //MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 
     MPID_Thread_mutex_lock(&async_io_mutex, &mpi_errno);
     MPIR_Assert(!mpi_errno);
@@ -184,7 +184,7 @@ int MPIIO_Dequeue_async_io_queue(MPIIO_Async_io_queue_t *queue, int *oper, char 
     MPID_Thread_cond_signal(&async_io_cond_dequeue, &mpi_errno);
     MPIR_Assert(!mpi_errno);
 
-    MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
+    //MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 
 #endif /* MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE */
     
@@ -199,22 +199,21 @@ int MPIIO_WaitEmpty_async_io_queue(MPIIO_Async_io_queue_t *queue)
 #if MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE
 
     /* XXX DJG why is this unlock/lock necessary?  Should we just YIELD here or later?  */
-    MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
+    //MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 
     MPID_Thread_mutex_lock(&async_io_mutex, &mpi_errno);
-    MPIR_Assert(!mpi_errno);
 
+    MPIR_Assert(!mpi_errno);
     while (!MPIIO_IsEmpty_async_io_queue(queue)) {
         PRINTF("This Queue is not empty\n");
         MPID_Thread_cond_wait(&async_io_cond_dequeue, &async_io_mutex, &mpi_errno);
         MPIR_Assert(!mpi_errno);
     }
     PRINTF("This Queue is empty\n");
-
     MPID_Thread_mutex_unlock(&async_io_mutex, &mpi_errno);
     MPIR_Assert(!mpi_errno);
 
-    MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
+    //MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 
 #endif /* MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE */
     
@@ -234,7 +233,7 @@ static void async_io_fn(void)
     /* Explicitly add CS_ENTER/EXIT since this thread is created from
      * within an internal function and will call NMPI functions
      * directly. */
-    MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
+    //MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     PRINTF("async_io_fn: begin\n");
 
     /* allocate mem. for the data element */
@@ -259,7 +258,7 @@ static void async_io_fn(void)
     MPL_free(data);
 
     PRINTF("async_io_fn: end\n");
-    MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
+    //MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 
 #endif /* MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE */
     return;
