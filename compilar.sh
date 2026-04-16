@@ -16,10 +16,10 @@ cd $SOURCE_DIR
 echo "Installing mpich runtime in dorectory ${RUN_PATH}..."
 
 # clean previous compilations
-make clean
+make clean 
 
 # configure and compile source code
-./configure --enable-romio --prefix=${RUN_PATH} --with-file-system=ufs+nfs CPPFLAGS=-DUSE_MPI_VERSIONS --enable-g=none --enable-fast=O0 --enable-shared --disable-fortran CC=gcc CXX=g++
+./configure --enable-threads=multiple --enable-romio --prefix=${RUN_PATH} --with-file-system=ufs+nfs CPPFLAGS=-DUSE_MPI_VERSIONS --enable-g=none --enable-fast=O0 --enable-shared --disable-fortran CC=gcc CXX=g++
 
 make -j8
 
