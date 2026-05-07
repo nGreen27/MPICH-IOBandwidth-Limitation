@@ -256,12 +256,16 @@ static void control_bw_operation (void *buf, int count, MPI_Datatype datatype, A
         //exec_time_block = (int)((((double)(EMPI_WORLD_SIZE*EMPI_IOBLOCK*datatype_size)) / ((adjusted_desired_bw)*1024.0*1024.0))*1000000.0);
         //exec_time_block = (int)((((double)(EMPI_IOBLOCK*datatype_size)) / ((adjusted_desired_bw)*1024.0*1024.0))*1000000.0);
         
-        PRINTF("control_bw_operation: exec_time_block: %d, EMPI_DESIRED_BW: %lf, adjusted_desired_bw: %lf, EMPI_WORLD_SIZE: %d, EMPI_IOBLOCK: %ld, datatype_size:%d\n",exec_time_block,EMPI_DESIRED_BW, adjusted_desired_bw, EMPI_WORLD_SIZE, EMPI_IOBLOCK, datatype_size);
+        PRINTF("control_bw_operation: exec_time_block: %d, EMPI_DESIRED_BW: %lf, adjusted_desired_bw: %lf, EMPI_WORLD_SIZE: %d, EMPI_IOBLOCK: %ld, datatype_size:%d\n",exec_time_block,*EMPI_DESIRED_BW, adjusted_desired_bw, EMPI_WORLD_SIZE, EMPI_IOBLOCK, datatype_size);
 
         for (i=0;i<num_phases;i++){
 
             adjusted_desired_bw = (double)(*EMPI_DESIRED_BW) * (double)(*EMPI_SCALE_BW);
-            exec_time_block = (int)((((double)(EMPI_IOBLOCK*datatype_size)) / (adjusted_desired_bw))*1000000.0);
+            if (adjusted_desired_bw == 0.0) {
+                exec_time_block = 0;
+            } else {
+                exec_time_block = (int)((((double)(EMPI_IOBLOCK*datatype_size)) / (adjusted_desired_bw))*1000000.0);
+            }
 
 
             local_off=offset+(MPI_Offset)(i*((MPI_Offset)(EMPI_IOBLOCK*(long int)datatype_size)));
@@ -275,7 +279,11 @@ static void control_bw_operation (void *buf, int count, MPI_Datatype datatype, A
                 local_count=((long int)count)-EMPI_IOBLOCK*(long int)i;
                 //exec_time = (int)((((double)(EMPI_WORLD_SIZE*local_count*datatype_size)) / ((adjusted_desired_bw)*1024.0*1024.0))*1000000.0);
                 //exec_time = (int)((((double)(local_count*datatype_size)) / ((adjusted_desired_bw)*1024.0*1024.0))*1000000.0);
-                exec_time = (int)((((double)(local_count*datatype_size)) / (adjusted_desired_bw))*1000000.0);
+                if (adjusted_desired_bw == 0.0) {
+                    exec_time = 0;
+                } else {
+                    exec_time = (int)((((double)(local_count*datatype_size)) / (adjusted_desired_bw))*1000000.0);
+                }
             }
             PRINTF("control_bw_operation:  ----> Rank [%d] i: %d count: %ld  offset: %ld  array_offset: %ld --- Block: %ld - exec_time: %d \n",EMPI_WORLD_RANK,i,(long int)local_count,(long int)local_off,(long int)array_offset,EMPI_IOBLOCK,exec_time);
             
@@ -447,7 +455,9 @@ void Async_IreadContig(ADIO_File fd, void *buf, int count, MPI_Datatype datatype
     (*error_code) = MPI_SUCCESS;
     generic_request_create_start(&fd, nbytes, error_code, request);
     Async_IReadContig_data_t elem = {fd,buf,count,datatype,file_ptr_type,offset,request};
+    ROMIO_THREAD_CS_EXIT();
     MPIIO_Enqueue_async_io_queue(&MPIIO_Async_io_queue, ASYNC_OP_IReadContig, (char *)&elem, sizeof(Async_IReadContig_data_t));
+    ROMIO_THREAD_CS_ENTER();
     //MPIIO_WaitEmpty_async_io_queue(&MPIIO_Async_io_queue);
 
     PRINTF ("Async_IreadContig: end\n");
